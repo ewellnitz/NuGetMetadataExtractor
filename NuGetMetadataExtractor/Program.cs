@@ -1,42 +1,38 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
-using System.Diagnostics;
 using System.Net.Http;
+using System.Threading.Tasks;
 using System.Xml;
+using System.Linq;
 
 namespace PackageParser
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            if (args.Length < 1)
-            {
-                Console.WriteLine("usage: NuGetMetaDataExtractor <inputFile> [outputFile]");
-                return;
-            }
+            string fileName = args.Length > 0 ? args[0] : "packages.config";
 
+            //Console.WriteLine("usage: NuGetMetaDataExtractor [inputFile]");
 
-
-            XmlDocument document = new XmlDocument();
-            document.Load(args[0]);
-            var nodes = document.SelectNodes("//packages/package");
+            var document = new XmlDocument();
+            document.Load(fileName);
+            XmlNodeList nodes = document.SelectNodes("//packages/package");
 
             var client = new HttpClient();
-            JArray array = new JArray();
+            var array = new JArray();
 
-            foreach (XmlNode node in nodes)
+            Parallel.ForEach(nodes.OfType<XmlNode>(), (node) =>
             {
-                
-                var id = node.Attributes["id"].Value;
-                var version = node.Attributes["version"].Value;
+                string id = node.Attributes["id"].Value;
+                string version = node.Attributes["version"].Value;
                 //Console.WriteLine($"Processing package {id} {version}...");
-                var url = $"https://api.nuget.org/v3/registration3/{id.ToLower()}/{version}.json";
-                var response = client.GetAsync(url).Result;
-                var description = "";
-                var licenseUrl = "";
-                var projectUrl = "";
+                string url = $"https://api.nuget.org/v3/registration3/{id.ToLower()}/{version}.json";
+                HttpResponseMessage response = client.GetAsync(url).Result;
+                //string description = "";
+                //string licenseUrl = "";
+                //string projectUrl = "";
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
                     //Console.WriteLine($"Error: Can't find registration: {url}");
@@ -45,21 +41,23 @@ namespace PackageParser
                 {
 
                     //deserialize response into a JObject
-                    var result = JsonConvert.DeserializeObject<JObject>(response.Content.ReadAsStringAsync().Result);
-                    var catalog = result["catalogEntry"];
+                    JObject result = JsonConvert.DeserializeObject<JObject>(response.Content.ReadAsStringAsync().Result);
+                    JToken catalog = result["catalogEntry"];
 
                     response = client.GetAsync(catalog.ToString()).Result;
                     result = JsonConvert.DeserializeObject<JObject>(response.Content.ReadAsStringAsync().Result);
-                    array.Add(result);
+                    lock (array)
+                    {
+                        array.Add(result);
+                    }
                     //Console.WriteLine("\t" + result);
-                    description = result["description"]?.ToString();
-                    licenseUrl = result["licenseUrl"]?.ToString();
-                    projectUrl = result["projectUrl"]?.ToString();
+                    //description = result["description"]?.ToString();
+                    //licenseUrl = result["licenseUrl"]?.ToString();
+                    //projectUrl = result["projectUrl"]?.ToString();
                 }
                 //Console.WriteLine($"{id}|{version}|{description}|{licenseUrl}|{projectUrl}".Replace("\r", " ").Replace("\n", " "));
-            }
+            });
             Console.WriteLine(array);
-
         }
     }
 }
