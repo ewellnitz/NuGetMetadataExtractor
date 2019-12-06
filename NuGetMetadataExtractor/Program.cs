@@ -11,18 +11,27 @@ namespace PackageParser
     {
         static void Main(string[] args)
         {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("usage: NuGetMetaDataExtractor <inputFile> [outputFile]");
+                return;
+            }
+
+
+
             XmlDocument document = new XmlDocument();
-            document.Load("input.xml");
+            document.Load(args[0]);
             var nodes = document.SelectNodes("//packages/package");
 
             var client = new HttpClient();
+            JArray array = new JArray();
 
-            
-            
             foreach (XmlNode node in nodes)
             {
+                
                 var id = node.Attributes["id"].Value;
                 var version = node.Attributes["version"].Value;
+                //Console.WriteLine($"Processing package {id} {version}...");
                 var url = $"https://api.nuget.org/v3/registration3/{id.ToLower()}/{version}.json";
                 var response = client.GetAsync(url).Result;
                 var description = "";
@@ -30,7 +39,7 @@ namespace PackageParser
                 var projectUrl = "";
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    Debug.WriteLine($"Can't find {id}");
+                    //Console.WriteLine($"Error: Can't find registration: {url}");
                 }
                 else
                 {
@@ -41,13 +50,16 @@ namespace PackageParser
 
                     response = client.GetAsync(catalog.ToString()).Result;
                     result = JsonConvert.DeserializeObject<JObject>(response.Content.ReadAsStringAsync().Result);
+                    array.Add(result);
+                    //Console.WriteLine("\t" + result);
                     description = result["description"]?.ToString();
                     licenseUrl = result["licenseUrl"]?.ToString();
                     projectUrl = result["projectUrl"]?.ToString();
                 }
-
-                Console.WriteLine($"{id}|{version}|{description}|{licenseUrl}|{projectUrl}".Replace("\r", " ").Replace("\n", " "));
+                //Console.WriteLine($"{id}|{version}|{description}|{licenseUrl}|{projectUrl}".Replace("\r", " ").Replace("\n", " "));
             }
+            Console.WriteLine(array);
+
         }
     }
 }
